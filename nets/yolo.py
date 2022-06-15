@@ -45,10 +45,11 @@ class Upsample(nn.Module):
 #---------------------------------------------------#
 def yolo_head(filters_list, in_filters):
     m = nn.Sequential(
-        BasicConv(in_filters, filters_list[0], 3),
-        nn.Conv2d(filters_list[0], filters_list[1], 1),
+        BasicConv(in_filters,      filters_list[0], 3),     # 特征整合
+        nn.Conv2d(filters_list[0], filters_list[1], 1),     # 将通道转换为预测
     )
     return m
+
 #---------------------------------------------------#
 #   yolo_body
 #---------------------------------------------------#
@@ -58,12 +59,21 @@ class YoloBody(nn.Module):
         self.phi            = phi
         self.backbone       = darknet53_tiny(pretrained)
 
-        self.conv_for_P5    = BasicConv(512,256,1)
-        self.yolo_headP5    = yolo_head([512, len(anchors_mask[0]) * (5 + num_classes)],256)
+        #---------------------------------------------------#
+        #   feat2经过一次卷积就得到P5,然后直接进入yolo_head
+        #---------------------------------------------------#
+        self.conv_for_P5    = BasicConv(512, 256, 1)
+        self.yolo_headP5    = yolo_head([512, len(anchors_mask[0]) * (5 + num_classes)], 256)
 
-        self.upsample       = Upsample(256,128)
-        self.yolo_headP4    = yolo_head([256, len(anchors_mask[1]) * (5 + num_classes)],384)
+        #---------------------------------------------------#
+        #   P5上采样和feat1拼接后没有5次卷积,直接进入yolo_head
+        #---------------------------------------------------#
+        self.upsample       = Upsample(256, 128)
+        self.yolo_headP4    = yolo_head([256, len(anchors_mask[1]) * (5 + num_classes)], 384)
 
+        #---------------------------------------------------#
+        #   特征层->最后的输出添加多种注意力机制
+        #---------------------------------------------------#
         if 1 <= self.phi and self.phi <= 4:
             self.feat1_att      = attention_block[self.phi - 1](256)
             self.feat2_att      = attention_block[self.phi - 1](512)
@@ -72,28 +82,37 @@ class YoloBody(nn.Module):
     def forward(self, x):
         #---------------------------------------------------#
         #   生成CSPdarknet53_tiny的主干模型
-        #   feat1的shape为26,26,256
-        #   feat2的shape为13,13,512
+        #   feat1的shape为 26,26,256
+        #   feat2的shape为 13,13,512
         #---------------------------------------------------#
         feat1, feat2 = self.backbone(x)
         if 1 <= self.phi and self.phi <= 4:
             feat1 = self.feat1_att(feat1)
             feat2 = self.feat2_att(feat2)
 
-        # 13,13,512 -> 13,13,256
+        #---------------------------------------------------#
+        #   feat2经过一次卷积就得到P5,然后直接进入yolo_head
+        #   13,13,512 -> 13,13,256
+        #---------------------------------------------------#
         P5 = self.conv_for_P5(feat2)
-        # 13,13,256 -> 13,13,512 -> 13,13,255
-        out0 = self.yolo_headP5(P5) 
+        #   13,13,256 -> 13,13,512 -> 13,13,75  75 = 3 * (25 + 1 + 4)
+        out0 = self.yolo_headP5(P5)
 
-        # 13,13,256 -> 13,13,128 -> 26,26,128
+        #---------------------------------------------------#
+        #   P5上采样和feat1拼接后没有5次卷积,直接进入yolo_head
+        #   13,13,256 -> 13,13,128 -> 26,26,128
+        #---------------------------------------------------#
         P5_Upsample = self.upsample(P5)
         # 26,26,256 + 26,26,128 -> 26,26,384
         if 1 <= self.phi and self.phi <= 4:
             P5_Upsample = self.upsample_att(P5_Upsample)
-        P4 = torch.cat([P5_Upsample,feat1],axis=1)
-
-        # 26,26,384 -> 26,26,256 -> 26,26,255
+        #   26,26,256 + 26,26,128 -> 26,26,384
+        P4 = torch.cat([P5_Upsample, feat1], axis=1)
+        #   26,26,384 -> 26,26,256 -> 26,26,75  75 = 3 * (25 + 1 + 4)
         out1 = self.yolo_headP4(P4)
-        
-        return out0, out1
 
+        #---------------------------------------------------#
+        #   13,13,75
+        #   26,26,75
+        #---------------------------------------------------#
+        return out0, out1

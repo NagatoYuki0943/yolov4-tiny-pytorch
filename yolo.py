@@ -1,3 +1,7 @@
+"""
+model_path ,classes_path, input_shape, phi, confidence, nms_iou
+"""
+
 import colorsys
 import os
 import time
@@ -25,8 +29,8 @@ class YOLO(object):
         #   验证集损失较低不代表mAP较高，仅代表该权值在验证集上泛化性能较好。
         #   如果出现shape不匹配，同时要注意训练时的model_path和classes_path参数的修改
         #--------------------------------------------------------------------------#
-        "model_path"        : 'model_data/yolov4_tiny_weights_coco.pth',
-        "classes_path"      : 'model_data/coco_classes.txt',
+        "model_path"        : 'model_data/yolov4_tiny_weights_voc.pth',
+        "classes_path"      : 'model_data/voc_classes.txt',
         #---------------------------------------------------------------------#
         #   anchors_path代表先验框对应的txt文件，一般不修改。
         #   anchors_mask用于帮助代码找到对应的先验框，一般不修改。
@@ -40,7 +44,7 @@ class YOLO(object):
         #   phi = 2为CBAM
         #   phi = 3为ECA
         #-------------------------------#
-        "phi"               : 0,  
+        "phi"               : 0,
         #---------------------------------------------------------------------#
         #   输入图片的大小，必须为32的倍数。
         #---------------------------------------------------------------------#
@@ -50,7 +54,7 @@ class YOLO(object):
         #---------------------------------------------------------------------#
         "confidence"        : 0.5,
         #---------------------------------------------------------------------#
-        #   非极大抑制所用到的nms_iou大小
+        #   非极大抑制所用到的nms_iou大小,越小代表越严格
         #---------------------------------------------------------------------#
         "nms_iou"           : 0.3,
         #---------------------------------------------------------------------#
@@ -146,10 +150,10 @@ class YOLO(object):
             #---------------------------------------------------------#
             #   将预测框进行堆叠，然后进行非极大抑制
             #---------------------------------------------------------#
-            results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape, 
+            results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape,
                         image_shape, self.letterbox_image, conf_thres = self.confidence, nms_thres = self.nms_iou)
-                                                    
-            if results[0] is None: 
+
+            if results[0] is None:
                 return image
 
             top_label   = np.array(results[0][:, 6], dtype = 'int32')
@@ -182,7 +186,7 @@ class YOLO(object):
                 left    = max(0, np.floor(left).astype('int32'))
                 bottom  = min(image.size[1], np.floor(bottom).astype('int32'))
                 right   = min(image.size[0], np.floor(right).astype('int32'))
-                
+
                 dir_save_path = "img_crop"
                 if not os.path.exists(dir_save_path):
                     os.makedirs(dir_save_path)
@@ -209,7 +213,7 @@ class YOLO(object):
             label_size = draw.textsize(label, font)
             label = label.encode('utf-8')
             print(label, top, left, bottom, right)
-            
+
             if top - label_size[1] >= 0:
                 text_origin = np.array([left, top - label_size[1]])
             else:
@@ -222,7 +226,7 @@ class YOLO(object):
             del draw
 
         return image
-        
+
     def get_FPS(self, image, test_interval):
         image_shape = np.array(np.shape(image)[0:2])
         #---------------------------------------------------------#
@@ -252,9 +256,9 @@ class YOLO(object):
             #---------------------------------------------------------#
             #   将预测框进行堆叠，然后进行非极大抑制
             #---------------------------------------------------------#
-            results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape, 
+            results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape,
                         image_shape, self.letterbox_image, conf_thres=self.confidence, nms_thres=self.nms_iou)
-                                                    
+
         t1 = time.time()
         for _ in range(test_interval):
             with torch.no_grad():
@@ -266,9 +270,9 @@ class YOLO(object):
                 #---------------------------------------------------------#
                 #   将预测框进行堆叠，然后进行非极大抑制
                 #---------------------------------------------------------#
-                results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape, 
+                results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape,
                             image_shape, self.letterbox_image, conf_thres=self.confidence, nms_thres=self.nms_iou)
-                            
+
         t2 = time.time()
         tact_time = (t2 - t1) / test_interval
         return tact_time
@@ -302,7 +306,7 @@ class YOLO(object):
             #   将图像输入网络当中进行预测！
             #---------------------------------------------------------#
             outputs = self.net(images)
-        
+
         plt.imshow(image, alpha=1)
         plt.axis('off')
         mask    = np.zeros((image.size[1], image.size[0]))
@@ -314,7 +318,7 @@ class YOLO(object):
             score      = cv2.resize(score, (image.size[0], image.size[1]))
             normed_score    = (score * 255).astype('uint8')
             mask            = np.maximum(mask, normed_score)
-            
+
         plt.imshow(mask, alpha=0.5, interpolation='nearest', cmap="jet")
 
         plt.axis('off')
@@ -331,7 +335,7 @@ class YOLO(object):
         im                  = torch.zeros(1, 3, *self.input_shape).to('cpu')  # image size(1, 3, 512, 512) BCHW
         input_layer_names   = ["images"]
         output_layer_names  = ["output"]
-        
+
         # Export the model
         print(f'Starting export with onnx {onnx.__version__}.')
         torch.onnx.export(self.net,

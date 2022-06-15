@@ -41,7 +41,7 @@ class YOLOLoss(nn.Module):
         pred    = self.clip_by_tensor(pred, epsilon, 1.0 - epsilon)
         output  = - target * torch.log(pred) - (1.0 - target) * torch.log(1.0 - pred)
         return output
-        
+
     def box_ciou(self, b1, b2):
         """
         输入为：
@@ -373,7 +373,7 @@ class YOLOLoss(nn.Module):
         scaled_anchors_l = np.array(scaled_anchors)[self.anchors_mask[l]]
         anchor_w = torch.Tensor(scaled_anchors_l).index_select(1, torch.LongTensor([0])).type_as(x)
         anchor_h = torch.Tensor(scaled_anchors_l).index_select(1, torch.LongTensor([1])).type_as(x)
-        
+
         anchor_w = anchor_w.repeat(bs, 1).repeat(1, 1, in_h * in_w).view(w.shape)
         anchor_h = anchor_h.repeat(bs, 1).repeat(1, 1, in_h * in_w).view(h.shape)
         #-------------------------------------------------------#
@@ -384,7 +384,7 @@ class YOLOLoss(nn.Module):
         pred_boxes_w    = torch.unsqueeze(torch.exp(w) * anchor_w, -1)
         pred_boxes_h    = torch.unsqueeze(torch.exp(h) * anchor_h, -1)
         pred_boxes      = torch.cat([pred_boxes_x, pred_boxes_y, pred_boxes_w, pred_boxes_h], dim = -1)
-        for b in range(bs):           
+        for b in range(bs):
             #-------------------------------------------------------#
             #   将预测结果转换一个形式
             #   pred_boxes_for_ignore      num_anchors, 4
